@@ -1,0 +1,89 @@
+# Define a namespace for the staging environment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    environment: development
+---
+# Deploy the API application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: staging
+  labels:
+    app: api
+spec:
+  replicas: 2  # Number of desired pods
+  selector:
+    matchLabels:
+      app: api  # Label selector for the pods
+  template:
+    metadata:
+      labels:
+        app: api  # Labels for pod template
+    spec:
+      containers:
+        - name: main
+          image: myregistry/api:latest  # Container image
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 250m
+            limits:
+              memory: 128Mi
+              cpu: 500m
+          # Health check to restart container if it's unhealthy
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          # Health check to check if the pod is ready to receive traffic
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+# Expose the Deployment with a ClusterIP service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: staging
+spec:
+  selector:
+    app: api  # Corrected to match deployment label
+  ports:
+    - port: 80         # Exposed port
+      targetPort: 8080 # Target container port
+      protocol: TCP
+  type: ClusterIP
+---
+# Define Horizontal Pod Autoscaler (HPA) for API deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+  namespace: staging
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-deployment  # Corrected to match the deployment name
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80  # Target CPU utilization percentage
